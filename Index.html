@@ -1,0 +1,163 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Skybound Flight Simulator</title>
+<style>
+body{margin:0;overflow:hidden;background:#78b9e8;font-family:Arial}
+canvas{display:block}
+#hud{position:fixed;top:10px;left:10px;color:white;background:#102b46cc;padding:12px;border-radius:12px}
+#controls{position:fixed;bottom:15px;width:100%;display:flex;justify-content:space-around}
+button{background:#123c60;color:white;border:1px solid white;border-radius:12px;padding:18px;font-weight:bold}
+#th{position:fixed;bottom:95px;left:25%;width:50%}
+</style>
+</head>
+<body>
+<div id="hud">SKYBOUND ✈️<br>
+Speed: <span id="speed">0</span> km/h<br>
+Altitude: <span id="alt">35</span> m</div>
+<input id="th" type="range" min="0" max="100" value="42">
+<div id="controls">
+<button id="left">◀</button>
+<button id="up">▲</button>
+<button id="down">▼</button>
+<button id="right">▶</button>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
+<script>
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x82bce5);
+scene.fog=new THREE.Fog(0x82bce5,400,1800);
+
+const camera=new THREE.PerspectiveCamera(65,innerWidth/innerHeight,.1,3000);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.shadowMap.enabled=true;
+document.body.prepend(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x455544,2));
+const sun=new THREE.DirectionalLight(0xffffff,2);
+sun.position.set(-100,200,100);
+sun.castShadow=true;
+scene.add(sun);
+
+const mat=c=>new THREE.MeshStandardMaterial({color:c});
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(3000,3000),mat(0x477b40));
+ground.rotation.x=-Math.PI/2;
+ground.position.y=-2;
+scene.add(ground);
+
+const runway=new THREE.Mesh(
+new THREE.BoxGeometry(40,.3,650),mat(0x292d32));
+runway.position.set(0,-.7,-100);
+scene.add(runway);
+
+for(let z=-400;z<200;z+=40){
+let line=new THREE.Mesh(
+new THREE.BoxGeometry(1,.1,20),mat(0xffffff));
+line.position.set(0,-.5,z);
+scene.add(line);
+}
+
+for(let i=0;i<50;i++){
+let h=30+Math.random()*100;
+let hill=new THREE.Mesh(
+new THREE.SphereGeometry(h,12,8),
+mat(0x477343));
+hill.scale.y=.5;
+hill.position.set(
+(Math.random()-.5)*2200,-h*.4,
+(Math.random()-.5)*2200);
+scene.add(hill);
+}
+
+for(let i=0;i<25;i++){
+let cloud=new THREE.Group();
+cloud.position.set(
+(Math.random()-.5)*1800,
+150+Math.random()*180,
+(Math.random()-.5)*1800);
+for(let j=0;j<5;j++){
+let puff=new THREE.Mesh(
+new THREE.SphereGeometry(14+Math.random()*12,12,8),
+mat(0xf5f7fa));
+puff.position.set(Math.random()*25,Math.random()*8,Math.random()*20);
+cloud.add(puff);
+}
+scene.add(cloud);
+}
+
+const plane=new THREE.Group();
+scene.add(plane);
+function box(w,h,d,x,y,z,color){
+let m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat(color));
+m.position.set(x,y,z);
+plane.add(m);
+return m;
+}
+box(1.5,1.2,10,0,0,0,0xe5e8ed);
+box(19,.3,2.5,0,.1,0,0xd5dce4);
+box(6,.2,1.5,0,1,4,0xd5dce4);
+box(.3,2.5,2,0,2,4,0xe5e8ed);
+box(1.2,1,2,0,.8,-1,0x16435e);
+let prop=box(.15,4,.15,0,0,-5.5,0x222222);
+
+plane.position.y=35;
+let throttle=.42,speed=20,vs=0;
+let keys={left:false,right:false,up:false,down:false};
+
+Object.keys(keys).forEach(k=>{
+let b=document.getElementById(k);
+b.addEventListener('pointerdown',e=>{e.preventDefault();keys[k]=true});
+b.addEventListener('pointerup',()=>keys[k]=false);
+b.addEventListener('pointerleave',()=>keys[k]=false);
+});
+
+document.getElementById('th').oninput=e=>{
+throttle=e.target.value/100;
+};
+
+let clock=new THREE.Clock();
+function animate(){
+requestAnimationFrame(animate);
+let dt=Math.min(clock.getDelta(),.04);
+let pitch=(keys.up?1:0)-(keys.down?1:0);
+let roll=(keys.left?1:0)-(keys.right?1:0);
+
+speed+=(12+throttle*105-speed)*dt;
+vs+= (Math.max(0,(speed-17)*.32)-9.8+pitch*11)*dt;
+plane.rotateX(pitch*dt*.35);
+plane.rotateZ(roll*dt*.65);
+
+let forward=new THREE.Vector3(0,0,-1)
+.applyQuaternion(plane.quaternion);
+plane.position.addScaledVector(forward,speed*dt);
+plane.position.y+=vs*dt;
+if(plane.position.y<1.5){
+plane.position.y=1.5;
+vs=Math.max(0,vs);
+}
+prop.rotation.z+=dt*35;
+
+camera.position.lerp(
+plane.position.clone().add(
+new THREE.Vector3(0,6,20).applyQuaternion(plane.quaternion)
+),.08);
+camera.lookAt(plane.position);
+document.getElementById('speed').textContent=Math.round(speed*3.6);
+document.getElementById('alt').textContent=Math.round(plane.position.y);
+renderer.render(scene,camera);
+}
+animate();
+
+onresize=()=>{
+camera.aspect=innerWidth/innerHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(innerWidth,innerHeight);
+};
+</script>
+</body>
+  </html>
+  
